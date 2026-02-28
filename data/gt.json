@@ -13,7 +13,8 @@
       "category_id": 1,
       "bbox": [100, 120, 80, 60],
       "area": 4800,
-      "iscrowd": 0
+      "iscrowd": 0,
+      "visibility": 0.8
     },
     {
       "id": 2,
@@ -21,7 +22,8 @@
       "category_id": 2,
       "bbox": [300, 200, 50, 100],
       "area": 5000,
-      "iscrowd": 0
+      "iscrowd": 0,
+      "visibility": 0.6
     },
     {
       "id": 3,
@@ -29,7 +31,8 @@
       "category_id": 1,
       "bbox": [50, 50, 120, 90],
       "area": 10800,
-      "iscrowd": 0
+      "iscrowd": 0,
+      "visibility": 0.9
     },
     {
       "id": 4,
@@ -37,7 +40,8 @@
       "category_id": 2,
       "bbox": [200, 150, 100, 120],
       "area": 12000,
-      "iscrowd": 0
+      "iscrowd": 0,
+      "visibility": 0.3
     }
   ],
   "categories": [
