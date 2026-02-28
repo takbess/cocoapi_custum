@@ -30,3 +30,26 @@ cocoEval.filter_policies = {
 cocoEval.evaluate()
 cocoEval.accumulate()
 cocoEval.summarize()
+
+"""
+実行結果
+ Average Precision  (AP) @[ IoU=0.50:0.50 | area=   all | policy=   all | maxDets=100 ] = 0.752
+ Average Precision  (AP) @[ IoU=0.50:0.50 | area=   all | policy=   all | maxDets=100 ] = 0.752
+ Average Precision  (AP) @[ IoU=0.50      | area=   all | policy=   all | maxDets=100 ] = 0.752
+ Average Precision  (AP) @[ IoU=0.75      | area=   all | policy=   all | maxDets=100 ] = -1.000
+ Average Precision  (AP) @[ IoU=0.50:0.50 | area= small | policy=   all | maxDets=100 ] = -1.000
+ Average Precision  (AP) @[ IoU=0.50:0.50 | area=medium | policy=   all | maxDets=100 ] = 0.500
+ Average Precision  (AP) @[ IoU=0.50:0.50 | area= large | policy=   all | maxDets=100 ] = 1.000
+ Average Recall     (AR) @[ IoU=0.50:0.50 | area=   all | policy=   all | maxDets=  1 ] = 0.750
+ Average Recall     (AR) @[ IoU=0.50:0.50 | area=   all | policy=   all | maxDets= 10 ] = 0.750
+ Average Recall     (AR) @[ IoU=0.50:0.50 | area=   all | policy=   all | maxDets=100 ] = 0.750
+ Average Recall     (AR) @[ IoU=0.50:0.50 | area= small | policy=   all | maxDets=100 ] = -1.000
+ Average Recall     (AR) @[ IoU=0.50:0.50 | area=medium | policy=   all | maxDets=100 ] = 0.500
+ Average Recall     (AR) @[ IoU=0.50:0.50 | area= large | policy=   all | maxDets=100 ] = 1.000
+ Average Precision  (AP) @[ IoU=0.50:0.50 | area=   all | policy= upper | maxDets=100 ] = 1.000 # upper ポリシーでのAP
+ Average Precision  (AP) @[ IoU=0.50:0.50 | area=   all | policy= lower | maxDets=100 ] = 0.000 # lower ポリシーでのAP
+ Average Recall     (AR) @[ IoU=0.50:0.50 | area=   all | policy= upper | maxDets=100 ] = 1.000 # upper ポリシーでのAR 
+ Average Recall     (AR) @[ IoU=0.50:0.50 | area=   all | policy= lower | maxDets=100 ] = 0.000 # lower ポリシーでのAR
+
+
+"""

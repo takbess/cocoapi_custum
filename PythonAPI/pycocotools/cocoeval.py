@@ -528,6 +528,7 @@ class COCOeval:
             base = 12
             for i, key in enumerate(extra_policies):
                 stats[base + 2 * i] = _summarize(1, policy_key=key, maxDets=self.params.maxDets[2])
+            for i, key in enumerate(extra_policies):
                 stats[base + 2 * i + 1] = _summarize(0, policy_key=key, maxDets=self.params.maxDets[2])
             return stats
         def _summarizeKps():
