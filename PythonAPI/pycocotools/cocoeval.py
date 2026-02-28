@@ -47,9 +47,9 @@ class COCOeval:
     # results in "evalImgs" into the dictionary "eval" with fields:
     #  params     - parameters used for evaluation
     #  date       - date evaluation was performed
-    #  counts     - [T,R,K,A,Z,M] parameter dimensions (see above)
-    #  precision  - [TxRxKxAxZxM] precision for every evaluation setting
-    #  recall     - [TxKxAxZxM] max recall for every evaluation setting
+    #  counts     - [T,R,K,A,Y,Z,M] parameter dimensions (see above)
+    #  precision  - [TxRxKxAxYxZxM] precision for every evaluation setting
+    #  recall     - [TxKxAxYxZxM] max recall for every evaluation setting
     # Note: precision and recall==-1 for settings with no gt objects.
     #
     # See also coco, mask, pycocoDemo, pycocoEvalDemo
@@ -77,6 +77,7 @@ class COCOeval:
         self._paramsEval = {}               # parameters for evaluation
         self.stats = []                     # result summarization
         self.ious = {}                      # ious between all gts and dts
+        self.gt_filter_policies = {'all': lambda ann, imgId, catId: True}
         # Optional per-annotation evaluation filters. Keys become policy labels.
         # Each value is a callable: fn(ann, imgId, catId) -> bool.
         self.filter_policies = {'all': lambda ann, imgId, catId: True}
@@ -142,8 +143,16 @@ class COCOeval:
         self.params=p
 
         self._prepare()
-        policy_items = self._get_policy_items()
-        p.filterPolicyLbl = [k for k, _ in policy_items]
+        gt_policy_items = self._get_policy_items(
+            self.gt_filter_policies,
+            'gt_filter_policies',
+            'gtFilterPolicyLbl',
+        )
+        policy_items = self._get_policy_items(
+            self.filter_policies,
+            'filter_policies',
+            'filterPolicyLbl',
+        )
         # loop through images, area range, max detection number
         catIds = p.catIds if p.useCats else [-1]
 
@@ -157,9 +166,19 @@ class COCOeval:
 
         evaluateImg = self.evaluateImg
         maxDet = p.maxDets[-1]
-        self.evalImgs = [evaluateImg(imgId, catId, areaRng, policy_key, policy_fn, maxDet)
+        self.evalImgs = [evaluateImg(
+                    imgId,
+                    catId,
+                    areaRng,
+                    gt_policy_key,
+                    gt_policy_fn,
+                    policy_key,
+                    policy_fn,
+                    maxDet,
+                )
                  for catId in catIds
                  for areaRng in p.areaRng
+                 for gt_policy_key, gt_policy_fn in gt_policy_items
                  for policy_key, policy_fn in policy_items
                  for imgId in p.imgIds
              ]
@@ -167,14 +186,13 @@ class COCOeval:
         toc = time.time()
         print('DONE (t={:0.2f}s).'.format(toc-tic))
 
-    def _get_policy_items(self):
-        policies = self.filter_policies
+    def _get_policy_items(self, policies, attr_name, label_attr_name):
         if not isinstance(policies, dict):
-            raise Exception('filter_policies must be a dict of {policy_key: callable}')
+            raise Exception('{} must be a dict of {{policy_key: callable}}'.format(attr_name))
         items = []
         for key, fn in policies.items():
             if not callable(fn):
-                raise Exception('filter_policies[{}] must be callable'.format(key))
+                raise Exception('{}[{}] must be callable'.format(attr_name, key))
             resolved_fn = fn
             # Support factory-style value: lambda: predicate_fn
             try:
@@ -188,7 +206,7 @@ class COCOeval:
                     resolved_fn = fn()
                     if not callable(resolved_fn):
                         raise Exception(
-                            'filter_policies[{}] factory must return callable'.format(key)
+                            '{}[{}] factory must return callable'.format(attr_name, key)
                         )
             except (TypeError, ValueError):
                 # Builtin/c-extension callables may not expose signatures; use as-is.
@@ -198,6 +216,7 @@ class COCOeval:
             items = [('all', lambda ann, imgId, catId: True)]
         if 'all' not in [k for k, _ in items]:
             items = [('all', lambda ann, imgId, catId: True)] + items
+        setattr(self.params, label_attr_name, [k for k, _ in items])
         return items
 
     def computeIoU(self, imgId, catId):
@@ -272,7 +291,17 @@ class COCOeval:
                 ious[i, j] = np.sum(np.exp(-e)) / e.shape[0]
         return ious
 
-    def evaluateImg(self, imgId, catId, aRng, policy_key, policy_fn, maxDet):
+    def evaluateImg(
+            self,
+            imgId,
+            catId,
+            aRng,
+            gt_policy_key,
+            gt_policy_fn,
+            policy_key,
+            policy_fn,
+            maxDet
+        ):
         '''
         perform evaluation for single category and image
         :return: dict (single image results)
@@ -288,8 +317,9 @@ class COCOeval:
             return None
 
         for g in gt:
+            in_gt_policy = bool(gt_policy_fn(g, imgId, catId))
             in_policy = bool(policy_fn(g, imgId, catId))
-            if g['ignore'] or (g['area']<aRng[0] or g['area']>aRng[1]) or (not in_policy):
+            if g['ignore'] or (g['area']<aRng[0] or g['area']>aRng[1]) or (not in_gt_policy) or (not in_policy):
                 g['_ignore'] = 1
             else:
                 g['_ignore'] = 0
@@ -345,6 +375,7 @@ class COCOeval:
                 'image_id':     imgId,
                 'category_id':  catId,
                 'aRng':         aRng,
+                'gt_policy_key': gt_policy_key,
                 'policy_key':   policy_key,
                 'maxDet':       maxDet,
                 'dtIds':        [d['id'] for d in dt],
@@ -374,17 +405,19 @@ class COCOeval:
         R           = len(p.recThrs)
         K           = len(p.catIds) if p.useCats else 1
         A           = len(p.areaRng)
+        Y           = len(getattr(p, 'gtFilterPolicyLbl', ['all']))
         Z           = len(getattr(p, 'filterPolicyLbl', ['all']))
         M           = len(p.maxDets)
-        precision   = -np.ones((T,R,K,A,Z,M)) # -1 for the precision of absent categories
-        recall      = -np.ones((T,K,A,Z,M))
-        scores      = -np.ones((T,R,K,A,Z,M))
+        precision   = -np.ones((T,R,K,A,Y,Z,M)) # -1 for the precision of absent categories
+        recall      = -np.ones((T,K,A,Y,Z,M))
+        scores      = -np.ones((T,R,K,A,Y,Z,M))
 
         # create dictionary for future indexing
         _pe = self._paramsEval
         catIds = _pe.catIds if _pe.useCats else [-1]
         setK = set(catIds)
         setA = set(map(tuple, _pe.areaRng))
+        setY = set(getattr(_pe, 'gtFilterPolicyLbl', ['all']))
         setZ = set(getattr(_pe, 'filterPolicyLbl', ['all']))
         setM = set(_pe.maxDets)
         setI = set(_pe.imgIds)
@@ -392,75 +425,79 @@ class COCOeval:
         k_list = [n for n, k in enumerate(p.catIds)  if k in setK]
         m_list = [m for n, m in enumerate(p.maxDets) if m in setM]
         a_list = [n for n, a in enumerate(map(lambda x: tuple(x), p.areaRng)) if a in setA]
+        y_list = [n for n, y in enumerate(getattr(p, 'gtFilterPolicyLbl', ['all'])) if y in setY]
         z_list = [n for n, z in enumerate(getattr(p, 'filterPolicyLbl', ['all'])) if z in setZ]
         i_list = [n for n, i in enumerate(p.imgIds)  if i in setI]
         I0 = len(_pe.imgIds)
         A0 = len(_pe.areaRng)
+        Y0 = len(getattr(_pe, 'gtFilterPolicyLbl', ['all']))
         Z0 = len(getattr(_pe, 'filterPolicyLbl', ['all']))
         # retrieve E at each category, area range, and max number of detections
         for k, k0 in enumerate(k_list):
-            Nk = k0*A0*Z0*I0
+            Nk = k0*A0*Y0*Z0*I0
             for a, a0 in enumerate(a_list):
-                Na = a0*Z0*I0
-                for z, z0 in enumerate(z_list):
-                    Nz = z0*I0
-                    for m, maxDet in enumerate(m_list):
-                        E = [self.evalImgs[Nk + Na + Nz + i] for i in i_list]
-                        E = [e for e in E if not e is None]
-                        if len(E) == 0:
-                            continue
-                        dtScores = np.concatenate([e['dtScores'][0:maxDet] for e in E])
+                Na = a0*Y0*Z0*I0
+                for y, y0 in enumerate(y_list):
+                    Ny = y0*Z0*I0
+                    for z, z0 in enumerate(z_list):
+                        Nz = z0*I0
+                        for m, maxDet in enumerate(m_list):
+                            E = [self.evalImgs[Nk + Na + Ny + Nz + i] for i in i_list]
+                            E = [e for e in E if not e is None]
+                            if len(E) == 0:
+                                continue
+                            dtScores = np.concatenate([e['dtScores'][0:maxDet] for e in E])
 
-                        # different sorting method generates slightly different results.
-                        # mergesort is used to be consistent as Matlab implementation.
-                        inds = np.argsort(-dtScores, kind='mergesort')
-                        dtScoresSorted = dtScores[inds]
+                            # different sorting method generates slightly different results.
+                            # mergesort is used to be consistent as Matlab implementation.
+                            inds = np.argsort(-dtScores, kind='mergesort')
+                            dtScoresSorted = dtScores[inds]
 
-                        dtm  = np.concatenate([e['dtMatches'][:,0:maxDet] for e in E], axis=1)[:,inds]
-                        dtIg = np.concatenate([e['dtIgnore'][:,0:maxDet]  for e in E], axis=1)[:,inds]
-                        gtIg = np.concatenate([e['gtIgnore'] for e in E])
-                        npig = np.count_nonzero(gtIg==0 )
-                        if npig == 0:
-                            continue
-                        tps = np.logical_and(               dtm,  np.logical_not(dtIg) )
-                        fps = np.logical_and(np.logical_not(dtm), np.logical_not(dtIg) )
+                            dtm  = np.concatenate([e['dtMatches'][:,0:maxDet] for e in E], axis=1)[:,inds]
+                            dtIg = np.concatenate([e['dtIgnore'][:,0:maxDet]  for e in E], axis=1)[:,inds]
+                            gtIg = np.concatenate([e['gtIgnore'] for e in E])
+                            npig = np.count_nonzero(gtIg==0 )
+                            if npig == 0:
+                                continue
+                            tps = np.logical_and(               dtm,  np.logical_not(dtIg) )
+                            fps = np.logical_and(np.logical_not(dtm), np.logical_not(dtIg) )
 
-                        tp_sum = np.cumsum(tps, axis=1).astype(dtype=float)
-                        fp_sum = np.cumsum(fps, axis=1).astype(dtype=float)
-                        for t, (tp, fp) in enumerate(zip(tp_sum, fp_sum)):
-                            tp = np.array(tp)
-                            fp = np.array(fp)
-                            nd = len(tp)
-                            rc = tp / npig
-                            pr = tp / (fp+tp+np.spacing(1))
-                            q  = np.zeros((R,))
-                            ss = np.zeros((R,))
+                            tp_sum = np.cumsum(tps, axis=1).astype(dtype=float)
+                            fp_sum = np.cumsum(fps, axis=1).astype(dtype=float)
+                            for t, (tp, fp) in enumerate(zip(tp_sum, fp_sum)):
+                                tp = np.array(tp)
+                                fp = np.array(fp)
+                                nd = len(tp)
+                                rc = tp / npig
+                                pr = tp / (fp+tp+np.spacing(1))
+                                q  = np.zeros((R,))
+                                ss = np.zeros((R,))
 
-                            if nd:
-                                recall[t,k,a,z,m] = rc[-1]
-                            else:
-                                recall[t,k,a,z,m] = 0
+                                if nd:
+                                    recall[t,k,a,y,z,m] = rc[-1]
+                                else:
+                                    recall[t,k,a,y,z,m] = 0
 
-                            # numpy is slow without cython optimization for accessing elements
-                            # use python array gets significant speed improvement
-                            pr = pr.tolist(); q = q.tolist()
+                                # numpy is slow without cython optimization for accessing elements
+                                # use python array gets significant speed improvement
+                                pr = pr.tolist(); q = q.tolist()
 
-                            for i in range(nd-1, 0, -1):
-                                if pr[i] > pr[i-1]:
-                                    pr[i-1] = pr[i]
+                                for i in range(nd-1, 0, -1):
+                                    if pr[i] > pr[i-1]:
+                                        pr[i-1] = pr[i]
 
-                            inds = np.searchsorted(rc, p.recThrs, side='left')
-                            try:
-                                for ri, pi in enumerate(inds):
-                                    q[ri] = pr[pi]
-                                    ss[ri] = dtScoresSorted[pi]
-                            except:
-                                pass
-                            precision[t,:,k,a,z,m] = np.array(q)
-                            scores[t,:,k,a,z,m] = np.array(ss)
+                                inds = np.searchsorted(rc, p.recThrs, side='left')
+                                try:
+                                    for ri, pi in enumerate(inds):
+                                        q[ri] = pr[pi]
+                                        ss[ri] = dtScoresSorted[pi]
+                                except:
+                                    pass
+                                precision[t,:,k,a,y,z,m] = np.array(q)
+                                scores[t,:,k,a,y,z,m] = np.array(ss)
         self.eval = {
             'params': p,
-            'counts': [T, R, K, A, Z, M],
+            'counts': [T, R, K, A, Y, Z, M],
             'date': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'precision': precision,
             'recall':   recall,
@@ -474,45 +511,55 @@ class COCOeval:
         Compute and display summary metrics for evaluation results.
         Note this functin can *only* be applied on the default parameter setting
         '''
-        def _summarize( ap=1, iouThr=None, areaRng='all', maxDets=100, policy_key='all' ):
+        def _summarize(
+                ap=1,
+                iouThr=None,
+                areaRng='all',
+                maxDets=100,
+                gt_policy_key='all',
+                policy_key='all'
+            ):
             p = self.params
-            iStr = ' {:<18} {} @[ IoU={:<9} | area={:>6s} | policy={:>6s} | maxDets={:>3d} ] = {:0.3f}'
+            iStr = (' {:<18} {} @[ IoU={:<9} | area={:>6s} | '
+                    'gt_filter_policy={:>12s} | filter_policy={:>12s} | maxDets={:>3d} ] = {:0.3f}')
             titleStr = 'Average Precision' if ap == 1 else 'Average Recall'
             typeStr = '(AP)' if ap==1 else '(AR)'
             iouStr = '{:0.2f}:{:0.2f}'.format(p.iouThrs[0], p.iouThrs[-1]) \
                 if iouThr is None else '{:0.2f}'.format(iouThr)
 
             aind = [i for i, aRng in enumerate(p.areaRngLbl) if aRng == areaRng]
+            yind = [i for i, yLbl in enumerate(getattr(p, 'gtFilterPolicyLbl', ['all'])) if yLbl == gt_policy_key]
             zind = [i for i, zLbl in enumerate(getattr(p, 'filterPolicyLbl', ['all'])) if zLbl == policy_key]
             mind = [i for i, mDet in enumerate(p.maxDets) if mDet == maxDets]
-            if len(aind) == 0 or len(zind) == 0 or len(mind) == 0:
+            if len(aind) == 0 or len(yind) == 0 or len(zind) == 0 or len(mind) == 0:
                 mean_s = -1
-                print(iStr.format(titleStr, typeStr, iouStr, areaRng, policy_key, maxDets, mean_s))
+                print(iStr.format(titleStr, typeStr, iouStr, areaRng, gt_policy_key, policy_key, maxDets, mean_s))
                 return mean_s
             if ap == 1:
-                # dimension of precision: [TxRxKxAxZxM]
+                # dimension of precision: [TxRxKxAxYxZxM]
                 s = self.eval['precision']
                 # IoU
                 if iouThr is not None:
                     t = np.where(iouThr == p.iouThrs)[0]
                     s = s[t]
-                s = s[:,:,:,aind,zind,mind]
+                s = s[:,:,:,aind,yind,zind,mind]
             else:
-                # dimension of recall: [TxKxAxZxM]
+                # dimension of recall: [TxKxAxYxZxM]
                 s = self.eval['recall']
                 if iouThr is not None:
                     t = np.where(iouThr == p.iouThrs)[0]
                     s = s[t]
-                s = s[:,:,aind,zind,mind]
+                s = s[:,:,aind,yind,zind,mind]
             if len(s[s>-1])==0:
                 mean_s = -1
             else:
                 mean_s = np.mean(s[s>-1])
-            print(iStr.format(titleStr, typeStr, iouStr, areaRng, policy_key, maxDets, mean_s))
+            print(iStr.format(titleStr, typeStr, iouStr, areaRng, gt_policy_key, policy_key, maxDets, mean_s))
             return mean_s
         def _summarizeDets():
+            extra_gt_policies = [y for y in getattr(self.params, 'gtFilterPolicyLbl', ['all']) if y != 'all']
             extra_policies = [z for z in getattr(self.params, 'filterPolicyLbl', ['all']) if z != 'all']
-            stats = np.zeros((12 + 2 * len(extra_policies),))
+            stats = np.zeros((12 + 2 * len(extra_gt_policies) + 2 * len(extra_policies),))
             stats[0] = _summarize(1)
             stats[1] = _summarize(1, iouThr=.5, maxDets=self.params.maxDets[2])
             stats[2] = _summarize(1, iouThr=.75, maxDets=self.params.maxDets[2])
@@ -526,6 +573,11 @@ class COCOeval:
             stats[10] = _summarize(0, areaRng='medium', maxDets=self.params.maxDets[2])
             stats[11] = _summarize(0, areaRng='large', maxDets=self.params.maxDets[2])
             base = 12
+            for i, key in enumerate(extra_gt_policies):
+                stats[base + 2 * i] = _summarize(1, gt_policy_key=key, maxDets=self.params.maxDets[2])
+            for i, key in enumerate(extra_gt_policies):
+                stats[base + 2 * i + 1] = _summarize(0, gt_policy_key=key, maxDets=self.params.maxDets[2])
+            base = base + 2 * len(extra_gt_policies)
             for i, key in enumerate(extra_policies):
                 stats[base + 2 * i] = _summarize(1, policy_key=key, maxDets=self.params.maxDets[2])
             for i, key in enumerate(extra_policies):
@@ -569,6 +621,7 @@ class Params:
         self.maxDets = [1, 10, 100]
         self.areaRng = [[0 ** 2, 1e5 ** 2], [0 ** 2, 32 ** 2], [32 ** 2, 96 ** 2], [96 ** 2, 1e5 ** 2]]
         self.areaRngLbl = ['all', 'small', 'medium', 'large']
+        self.gtFilterPolicyLbl = ['all']
         self.filterPolicyLbl = ['all']
         self.useCats = 1
 
@@ -581,6 +634,7 @@ class Params:
         self.maxDets = [20]
         self.areaRng = [[0 ** 2, 1e5 ** 2], [32 ** 2, 96 ** 2], [96 ** 2, 1e5 ** 2]]
         self.areaRngLbl = ['all', 'medium', 'large']
+        self.gtFilterPolicyLbl = ['all']
         self.filterPolicyLbl = ['all']
         self.useCats = 1
         self.kpt_oks_sigmas = np.array([.26, .25, .25, .35, .35, .79, .79, .72, .72, .62,.62, 1.07, 1.07, .87, .87, .89, .89])/10.0

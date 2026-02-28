@@ -98,62 +98,58 @@ def filter_policy_corners(ann, imgId, catId, ratio=0.1):
 
 
 
-# # 例：visibilityフィルタ
+# 例：visibilityフィルタ
 
-# # 例：predのvisibilityが0.5以上のものだけ評価
-# def filter_policy_pred_visibility(ann, imgId, catId, thresh=0.5):
-#     # ann: GTまたはpredの辞書
-#     # predにvisibilityを追加しておく必要があります
-#     # predの場合、GTにはないフィールドなのでデフォルト0で安全
-#     visibility = ann["visibility"]
-#     return visibility > thresh
-
-# # これだと割り当てが不自然、、、、gtにだけ属性がある場合は別の処理が良いか、、、
-# """
-# gt_only_filter_policy(ann, imgId, catId):
-#     return True/False
+# 例：visibilityが0.5以上のものだけ評価
+def filter_policy_visible(ann, imgId, catId, thresh=0.5):
+    visibility = ann["visibility"]
+    return visibility > thresh
 
 
-# """
+# 例：visibilityが0.5以下のものだけ評価
+def filter_policy_nonvisible(ann, imgId, catId, thresh=0.5):
+    visibility = ann["visibility"]
+    return visibility <= thresh
 
 
-# """
-# ### gt_policy ###
-# 理念：
-# gt_policy_fn(gt)=False となるものは難しいGT。
-# そのGTを検出できたとしても、過検出としたくない。
 
-# # gt_policy の書き方
-# def your_gt_filter_policy(ann, imgId, catId):
-#     # ann: アノテーション（GTまたは予測）の辞書
-#     # imgId: 画像ID
-#     # catId: カテゴリーID
-#     # 条件に基づいてTrue/Falseを返す処理
-#     return True / False
+"""
+### gt_policy ###
+理念：
+gt_policy_fn(gt)=False となるものは難しいGT。
+そのGTを検出できたとしても、過検出としたくない。
 
-# # gt_policy の登録方法
-# cocoEval.gt_filter_policies = {
-#     "your_gt_policy_name1": your_gt_filter_policy1,
-#     "your_gt_policy_name2": your_gt_filter_policy2,
-#     ...
-# }
+# gt_policy の書き方
+def your_gt_filter_policy(ann, imgId, catId):
+    # ann: アノテーション（GTまたは予測）の辞書
+    # imgId: 画像ID
+    # catId: カテゴリーID
+    # 条件に基づいてTrue/Falseを返す処理
+    return True / False
+
+# gt_policy の登録方法
+cocoEval.gt_filter_policies = {
+    "your_gt_policy_name1": your_gt_filter_policy1,
+    "your_gt_policy_name2": your_gt_filter_policy2,
+    ...
+}
 
 
-# # gt_policy 登録時の挙動
-# if gt_policy_fn(gt)==False: 
-#     gt["_ignore"]=True
+# gt_policy 登録時の挙動
+if gt_policy_fn(gt)==False: 
+    gt["_ignore"]=True
 
-# # 割り当て処理。
-# #   _ignore=True のgtに割り当たったら、pred["_ignore"]=Trueにする
-# #   ※_ignore=Falseのgtを優先して割り当てることはしない。
+# 割り当て処理。
+#   _ignore=True のgtに割り当たったら、pred["_ignore"]=Trueにする
+#   ※_ignore=Falseのgtを優先して割り当てることはしない。
 
-# if pred is not matched to any gt:
-#     if gt_policy_fn(pred)==False:
-#         pred["_ignore"]=True
+if pred is not matched to any gt:
+    if gt_policy_fn(pred)==False:
+        pred["_ignore"]=True
 
-# # TP,FP,FN のカウント時には、_ignore=Trueのものはカウントしない。
+# TP,FP,FN のカウント時には、_ignore=Trueのものはカウントしない。
 
-# """
+"""
 
 
 
@@ -171,10 +167,15 @@ cocoEval.filter_policies = {
     "corners": filter_policy_corners,
 }
 
+cocoEval.gt_filter_policies = {
+    "visible": filter_policy_visible,
+    "nonvisible": filter_policy_nonvisible,
+}
+
 cocoEval.evaluate()
 cocoEval.accumulate()
 cocoEval.summarize()
-
+cocoEval._summarize()
 """
 実行結果
  Average Precision  (AP) @[ IoU=0.50:0.50 | area=   all | policy=   all | maxDets=100 ] = 0.752
