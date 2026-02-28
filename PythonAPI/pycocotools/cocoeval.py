@@ -556,10 +556,11 @@ class COCOeval:
                 mean_s = np.mean(s[s>-1])
             print(iStr.format(titleStr, typeStr, iouStr, areaRng, gt_policy_key, policy_key, maxDets, mean_s))
             return mean_s
+        self.summarize_one = _summarize        
         def _summarizeDets():
             extra_gt_policies = [y for y in getattr(self.params, 'gtFilterPolicyLbl', ['all']) if y != 'all']
             extra_policies = [z for z in getattr(self.params, 'filterPolicyLbl', ['all']) if z != 'all']
-            stats = np.zeros((12 + 2 * len(extra_gt_policies) + 2 * len(extra_policies),))
+            stats = np.zeros((12 + 2 * len(extra_gt_policies) + 2 * len(extra_policies) + 2 * len(extra_gt_policies) * len(extra_policies),))
             stats[0] = _summarize(1)
             stats[1] = _summarize(1, iouThr=.5, maxDets=self.params.maxDets[2])
             stats[2] = _summarize(1, iouThr=.75, maxDets=self.params.maxDets[2])
@@ -573,15 +574,41 @@ class COCOeval:
             stats[10] = _summarize(0, areaRng='medium', maxDets=self.params.maxDets[2])
             stats[11] = _summarize(0, areaRng='large', maxDets=self.params.maxDets[2])
             base = 12
+
+            print("Additional stats for custom gt filter policies and filter policies:")
+
+            # AP
+            # gt filter policies
             for i, key in enumerate(extra_gt_policies):
-                stats[base + 2 * i] = _summarize(1, gt_policy_key=key, maxDets=self.params.maxDets[2])
+                stats[base + i] = _summarize(1, gt_policy_key=key, maxDets=self.params.maxDets[2])
+            base = base + len(extra_gt_policies)
+            # filter policies
+            for i, key in enumerate(extra_policies):
+                stats[base + i] = _summarize(1, policy_key=key, maxDets=self.params.maxDets[2])
+            base = base + len(extra_policies)
+
+            # # gt filter policies x filter policies
+            # for i, gt_key in enumerate(extra_gt_policies):
+            #     for j, key in enumerate(extra_policies):
+            #         stats[base + i * len(extra_policies) + j] = _summarize(1, gt_policy_key=gt_key, policy_key=key, maxDets=self.params.maxDets[2])
+            # base = base + len(extra_gt_policies) * len(extra_policies)
+
+            # AR
+            # gt filter policies
             for i, key in enumerate(extra_gt_policies):
-                stats[base + 2 * i + 1] = _summarize(0, gt_policy_key=key, maxDets=self.params.maxDets[2])
-            base = base + 2 * len(extra_gt_policies)
+                stats[base + i] = _summarize(0, gt_policy_key=key, maxDets=self.params.maxDets[2])
+            base = base + len(extra_gt_policies)
+            # filter policies
             for i, key in enumerate(extra_policies):
-                stats[base + 2 * i] = _summarize(1, policy_key=key, maxDets=self.params.maxDets[2])
-            for i, key in enumerate(extra_policies):
-                stats[base + 2 * i + 1] = _summarize(0, policy_key=key, maxDets=self.params.maxDets[2])
+                stats[base + i] = _summarize(0, policy_key=key, maxDets=self.params.maxDets[2])
+            base = base + len(extra_policies)
+
+            # # gt filter policies x filter policies
+            # for i, gt_key in enumerate(extra_gt_policies):
+            #     for j, key in enumerate(extra_policies):
+            #         stats[base + i * len(extra_policies) + j] = _summarize(0, gt_policy_key=gt_key, policy_key=key, maxDets=self.params.maxDets[2])
+            # base = base + len(extra_gt_policies) * len(extra_policies)
+
             return stats
         def _summarizeKps():
             stats = np.zeros((10,))

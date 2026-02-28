@@ -43,17 +43,17 @@ if pred is not matched to any gt:
 
 """
 
-# def filter_policy_upper(ann, imgId, catId):
-#     x, y, w, h = ann["bbox"]
-#     cx = x + w/2
-#     cy = y + h/2
-#     return cy < 480/2 # 例：画像の上半分だけ評価
+def filter_policy_upper(ann, imgId, catId):
+    x, y, w, h = ann["bbox"]
+    cx = x + w/2
+    cy = y + h/2
+    return cy < 480/2 # 例：画像の上半分だけ評価
 
-# def filter_policy_lower(ann, imgId, catId):
-#     x, y, w, h = ann["bbox"]
-#     cx = x + w/2
-#     cy = y + h/2
-#     return cy > 480/2  # 例：画像の下半分だけ評価
+def filter_policy_lower(ann, imgId, catId):
+    x, y, w, h = ann["bbox"]
+    cx = x + w/2
+    cy = y + h/2
+    return cy > 480/2  # 例：画像の下半分だけ評価
 
 
 # 例：画像中心から半径100px以内のオブジェクトだけ評価
@@ -160,11 +160,11 @@ if pred is not matched to any gt:
 
 
 cocoEval.filter_policies = {
-    # "upper":  filter_policy_upper, 
-    # "lower":  filter_policy_lower, 
+    "upper":  filter_policy_upper, 
+    "lower":  filter_policy_lower, 
     # "center_circle":  filter_policy_center_circle,
     # "polygon": filter_policy_polygon,
-    "corners": filter_policy_corners,
+    # "corners": filter_policy_corners,
 }
 
 cocoEval.gt_filter_policies = {
@@ -175,7 +175,12 @@ cocoEval.gt_filter_policies = {
 cocoEval.evaluate()
 cocoEval.accumulate()
 cocoEval.summarize()
-cocoEval._summarize()
+
+
+print("additional")
+stats = cocoEval.summarize_one(1, areaRng='large', gt_policy_key="visible", policy_key="upper", maxDets=100)
+
+print(stats)
 """
 実行結果
  Average Precision  (AP) @[ IoU=0.50:0.50 | area=   all | policy=   all | maxDets=100 ] = 0.752
