@@ -7,10 +7,9 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Union
 
 import numpy as np
-from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
 
@@ -97,10 +96,23 @@ class CocoPRWrapper:
         k_indices = [self._cat_ids.index(cid) for cid in cat_ids]
 
         t_idx = int(np.argmin(np.abs(self._iou_thrs - iou)))
-        a_idx = self._area_rng_lbl.index(area) if area in self._area_rng_lbl else 0
-        y_idx = self._gt_filter_policy_lbl.index(gt_policy_key) if gt_policy_key in self._gt_filter_policy_lbl else 0
-        z_idx = self._filter_policy_lbl.index(policy_key) if policy_key in self._filter_policy_lbl else 0
-        m_idx = self._max_dets.index(maxdets) if maxdets in self._max_dets else len(self._max_dets) - 1
+        if area not in self._area_rng_lbl:
+            raise ValueError(f"Unknown area: {area}. Available: {self._area_rng_lbl}")
+        if gt_policy_key not in self._gt_filter_policy_lbl:
+            raise ValueError(
+                f"Unknown gt_policy_key: {gt_policy_key}. Available: {self._gt_filter_policy_lbl}"
+            )
+        if policy_key not in self._filter_policy_lbl:
+            raise ValueError(
+                f"Unknown policy_key: {policy_key}. Available: {self._filter_policy_lbl}"
+            )
+        if maxdets not in self._max_dets:
+            raise ValueError(f"Unknown maxdets: {maxdets}. Available: {self._max_dets}")
+
+        a_idx = self._area_rng_lbl.index(area)
+        y_idx = self._gt_filter_policy_lbl.index(gt_policy_key)
+        z_idx = self._filter_policy_lbl.index(policy_key)
+        m_idx = self._max_dets.index(maxdets)
 
         return k_indices, t_idx, a_idx, y_idx, z_idx, m_idx
 
@@ -403,7 +415,7 @@ class CocoPRWrapper:
     ) -> None:
         """
         Precision-Recall 曲線を CSV に保存。
-        Columns: recall, precision, score, f1
+        Columns: recall, precision, f1, score
         """
         k_indices, t_idx, a_idx, y_idx, z_idx, m_idx = self._resolve_indices(
             cat, iou, area, gt_policy_key, policy_key, maxdets
